@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:neto/screens/join.dart';
-import 'package:neto/screens/groups.dart';
+import 'package:neto/screens/home.dart';
 import 'package:neto/screens/settings.dart';
 
 class MainScreen extends StatefulWidget {
