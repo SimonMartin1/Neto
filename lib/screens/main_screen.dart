@@ -12,12 +12,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {  
   int _selectedIndex = 0;
-
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const JoinScreen(),
-    const SettingsScreen(),
-  ];
+  int _homeRefreshTick = 0;
 
   
   void _onItemTapped(int index) {
@@ -26,8 +21,8 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  void _showJoinModal() {
-    showModalBottomSheet(
+  Future<void> _showJoinModal() async {
+    final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -37,6 +32,23 @@ class _MainScreenState extends State<MainScreen> {
         child: const JoinScreen(),
       ),
     );
+
+    if (result == true && mounted) {
+      setState(() {
+        _homeRefreshTick++;
+        _selectedIndex = 0;
+      });
+    }
+  }
+
+  Widget _buildCurrentScreen() {
+    if (_selectedIndex == 0) {
+      return HomeScreen(key: ValueKey('home_$_homeRefreshTick'));
+    }
+    if (_selectedIndex == 2) {
+      return const SettingsScreen();
+    }
+    return const SizedBox.shrink();
   }
 
   @override
@@ -44,7 +56,7 @@ class _MainScreenState extends State<MainScreen> {
     return Stack(
       children: [
         Scaffold(
-          body: _screens[_selectedIndex],
+          body: _buildCurrentScreen(),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _selectedIndex,
             onTap: (index) {
