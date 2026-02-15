@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
@@ -13,17 +13,14 @@ class JoinScreen extends StatefulWidget {
 class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   final ApiService _api = ApiService();
-  
-  // Controladores
+
   final TextEditingController _mesaNameController = TextEditingController();
   final TextEditingController _joinCodeController = TextEditingController();
-  
-  // Datos del usuario
-  String? _userName;
-  String? _userId; // EL ID GLOBAL (Backend)
 
-  // Estado UI
+  String? _userId;
+
   bool _isLoading = false;
+  bool _isProcessingScan = false;
 
   @override
   void initState() {
@@ -32,12 +29,10 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
     _loadUserData();
   }
 
-  // Cargar datos de la sesión (Ahora incluye el ID Global)
   Future<void> _loadUserData() async {
     final sessionData = await SessionService.getSessionData();
     setState(() {
-      _userName = sessionData['name'];
-      _userId = sessionData['user_id']; // Recuperamos el ID que nos dio /auth
+      _userId = sessionData['user_id'];
     });
   }
 
@@ -49,46 +44,47 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // --- LÓGICA: CREAR GRUPO ---
   void _createGroup() async {
     if (_mesaNameController.text.trim().isEmpty) return;
     if (_userId == null) {
-      _showError("Error de sesión. Reinicia la app.");
+      _showError('Error de sesion. Reinicia la app.');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // Llamamos a la API enviando el ID Global
       final result = await _api.createGroup(_mesaNameController.text.trim(), _userId!);
 
       if (result != null && mounted) {
         final code = result['code'];
-        
-        // Cerramos el teclado
+
         FocusScope.of(context).unfocus();
 
-        // Mostrar el código generado
         await showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: const Text('¡Grupo Creado! 🎉'),
+            title: const Text('Grupo creado'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Comparte este código con tus amigos:'),
+                const Text('Comparte este codigo con tus amigos:'),
                 const SizedBox(height: 15),
                 Container(
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
                     color: Colors.indigo.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10)
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    code, 
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 4, color: Colors.indigo),
+                    '$code',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
+                      color: Colors.indigo,
+                    ),
                   ),
                 ),
               ],
@@ -96,8 +92,8 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(context); // Cerrar diálogo
-                  Navigator.pop(context, true); // Cerrar pantalla Join y recargar lista
+                  Navigator.pop(context);
+                  Navigator.pop(context, true);
                 },
                 child: const Text('Ir al Grupo'),
               )
@@ -105,16 +101,15 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
           ),
         );
       }
-    } catch (e) {
-      _showError("Error al crear grupo");
+    } catch (_) {
+      _showError('Error al crear grupo');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- LÓGICA: UNIRSE ---
   void _joinGroup(String code) async {
-    final cleanCode = code.trim().toUpperCase();
+    final cleanCode = _extractInvitationCode(code);
     if (cleanCode.isEmpty) return;
     if (_userId == null) return;
 
@@ -122,65 +117,90 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
     FocusScope.of(context).unfocus();
 
     try {
-      // Llamamos a la API
       final result = await _api.joinGroup(cleanCode, _userId!);
-      
+
       if (result != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('¡Te uniste a ${result['group_name']}! 🚀')),
+          SnackBar(content: Text('Te uniste a ${result['group_name']}')),
         );
-        // Volvemos atrás con "true" para que MainScreen sepa que debe actualizarse
-        Navigator.pop(context, true); 
+        Navigator.pop(context, true);
       }
     } catch (e) {
-      _showError(e.toString()); // El API Service lanza errores legibles ahora
+      _showError(e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showError(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: Colors.red,
-    ));
+  String _extractInvitationCode(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+
+    final uri = Uri.tryParse(value);
+    if (uri != null && uri.pathSegments.isNotEmpty) {
+      final inviteIndex = uri.pathSegments.indexOf('invite');
+      if (inviteIndex != -1 && inviteIndex + 1 < uri.pathSegments.length) {
+        return uri.pathSegments[inviteIndex + 1].trim().toUpperCase();
+      }
+    }
+
+    return value.toUpperCase();
   }
 
-  // --- LÓGICA: ABRIR CÁMARA QR ---
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   void _openQRScanner() {
-    Navigator.of(context).push(
+    _isProcessingScan = false;
+    Navigator.of(context)
+        .push(
       MaterialPageRoute(
         builder: (context) => Scaffold(
-          appBar: AppBar(title: const Text("Escanear Código")),
+          appBar: AppBar(title: const Text('Escanear codigo')),
           body: MobileScanner(
             onDetect: (capture) {
-              final List<Barcode> barcodes = capture.barcodes;
+              if (_isProcessingScan) return;
+
+              final barcodes = capture.barcodes;
               for (final barcode in barcodes) {
-                if (barcode.rawValue != null) {
-                  final code = barcode.rawValue!;
-                  Navigator.pop(context, code); // Volver con el código
-                  break; 
-                }
+                final raw = barcode.rawValue;
+                if (raw == null || raw.trim().isEmpty) continue;
+
+                _isProcessingScan = true;
+                final code = _extractInvitationCode(raw);
+                Navigator.pop(context, code);
+                break;
               }
             },
           ),
         ),
       ),
-    ).then((code) {
+    )
+        .then((code) {
       if (code != null && code is String) {
-        _joinCodeController.text = code;
-        _joinGroup(code); // Intentar unirse automáticamente
+        final cleanedCode = _extractInvitationCode(code);
+        if (cleanedCode.isEmpty) {
+          _showError('No se pudo leer un codigo valido del QR');
+          return;
+        }
+
+        _joinCodeController.text = cleanedCode;
+        _joinGroup(cleanedCode);
       }
     });
   }
 
-  // --- UI ---
-
   @override
   Widget build(BuildContext context) {
     return Container(
-       decoration: const BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(topLeft: Radius.circular(30), topRight: Radius.circular(30)),
       ),
@@ -189,7 +209,11 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 12.0),
-            child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            child: Container(
+              width: 40,
+              height: 5,
+              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
+            ),
           ),
           const SizedBox(height: 20),
           TabBar(
@@ -203,10 +227,8 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
             ],
           ),
           const SizedBox(height: 20),
-          // Usamos un SizedBox con altura fija o Expanded si está en un layout completo
-          // Como es un bottomSheet, mejor dejar que el contenido defina el alto o usar un alto fijo seguro
           SizedBox(
-            height: 400, 
+            height: 400,
             child: TabBarView(
               controller: _tabController,
               children: [
@@ -226,32 +248,25 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_userName != null) 
-            Text('Hola, $_userName', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
           const SizedBox(height: 10),
           const Text('Nuevo Grupo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
-          
           _buildInputField(
             controller: _mesaNameController,
             label: 'Nombre del Grupo',
             hint: 'Ej. Asado del Viernes',
             icon: Icons.edit,
           ),
-          
           const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
               onPressed: _isLoading ? null : _createGroup,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo, 
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-              ),
-              child: _isLoading 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Crear Grupo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: _isLoading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Crear Grupo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
             ),
           ),
         ],
@@ -267,31 +282,27 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
         children: [
           const Text('Unirse a un Grupo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
-          
           _buildInputField(
             controller: _joinCodeController,
-            label: 'Código de Invitación',
-            hint: 'Ej. XJ9-LM2',
+            label: 'Codigo de Invitacion',
+            hint: 'Ej. XJ9LM2',
             icon: Icons.key,
           ),
           const SizedBox(height: 20),
-
           SizedBox(
-            width: double.infinity, 
+            width: double.infinity,
             height: 50,
             child: ElevatedButton(
               onPressed: _isLoading ? null : () => _joinGroup(_joinCodeController.text),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
-              child: _isLoading 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Unirse', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: _isLoading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Unirse', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
-          
           const SizedBox(height: 16),
-          const Center(child: Text("- O -", style: TextStyle(color: Colors.grey))),
+          const Center(child: Text('- O -', style: TextStyle(color: Colors.grey))),
           const SizedBox(height: 16),
-          
           SizedBox(
             width: double.infinity,
             height: 50,
